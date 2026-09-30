@@ -1,0 +1,23 @@
+{{- if .Values.mtaIn.enabled -}}
+{{- $envVars := include "messages.common.env" (list . .Values.mtaIn) -}}
+{{- $fullName := include "messages.mtaIn.fullname" . -}}
+{{- $component := "mta-in" -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "messages.common.labels" (list . $component) | nindent 4 }}
+  annotations:
+    {{- toYaml $.Values.mtaIn.service.annotations | nindent 4 }}
+spec:
+  type: {{ .Values.mtaIn.service.type }}
+  ports:
+    - port: {{ .Values.mtaIn.service.port }}
+      targetPort: {{ .Values.mtaIn.service.targetPort }}
+      protocol: TCP
+      name: smtp
+  selector:
+    {{- include "messages.common.selectorLabels" (list . $component) | nindent 4 }}
+{{- end }}

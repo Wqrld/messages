@@ -46,7 +46,7 @@ jobs:
   docker-build-push:
     runs-on: ubuntu-latest
     outputs:
-      image_ref: "${{ inputs.registry }}/${{ github.repository }}-${{ inputs.image_name }}@${{ steps.create-manifest.outputs.digest }}"
+      image_ref: "${{ steps.image.outputs.name }}@${{ steps.create-manifest.outputs.digest }}"
     permissions:
       contents: read
       packages: write
@@ -55,6 +55,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Image references must be lowercase, but github.repository keeps the
+      # owner's casing (e.g. "Wqrld/messages"), which breaks `FROM <image_ref>`.
+      - name: Compute lowercase image name
+        id: image
+        env:
+          IMAGE: ${{ inputs.registry }}/${{ github.repository }}-${{ inputs.image_name }}
+        run: echo "name=${IMAGE,,}" >> "$GITHUB_OUTPUT"
       - name: Set up QEMU
         uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4.3.0
       - name: Set up Docker Buildx
@@ -69,7 +76,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ inputs.registry }}/${{ github.repository }}-${{ inputs.image_name }}
+          images: ${{ steps.image.outputs.name }}
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -118,7 +125,7 @@ jobs:
       - name: Create multi-arch manifests
         id: create-manifest
         run: |
-          IMAGE="${{ inputs.registry }}/${{ github.repository }}-${{ inputs.image_name }}"
+          IMAGE="${{ steps.image.outputs.name }}"
           readarray -t TAGS <<< "${{ steps.meta.outputs.tags }}"
           FIRST_TAG=""
           for tag in "${TAGS[@]}"; do
@@ -142,7 +149,7 @@ jobs:
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-name: ${{ inputs.registry }}/${{ github.repository }}-${{ inputs.image_name }}
+          subject-name: ${{ steps.image.outputs.name }}
           subject-digest: ${{ steps.create-manifest.outputs.digest }}
           push-to-registry: true
       - name: Delete all untagged container images

@@ -1,0 +1,23 @@
+{{- if .Values.mpa.enabled -}}
+{{- $envVars := include "messages.common.env" (list . .Values.mpa) -}}
+{{- $fullName := include "messages.mpa.fullname" . -}}
+{{- $component := "mpa" -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "messages.common.labels" (list . $component) | nindent 4 }}
+  annotations:
+    {{- toYaml $.Values.mpa.service.annotations | nindent 4 }}
+spec:
+  type: {{ .Values.mpa.service.type }}
+  ports:
+    - port: {{ .Values.mpa.service.port }}
+      targetPort: {{ .Values.mpa.service.targetPort }}
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "messages.common.selectorLabels" (list . $component) | nindent 4 }}
+{{- end }}

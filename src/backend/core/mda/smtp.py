@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import socks
+from django.conf import settings
 
 from core.mda.addresses import needs_smtputf8
 
@@ -211,7 +212,9 @@ def send_smtp_mail(
         }
     """
     statuses = {}
-    sender_hostname = proxy.sender_hostname if proxy else None
+    sender_hostname = (
+        proxy.sender_hostname if proxy else settings.MTA_OUT_EHLO_HOSTNAME
+    )
     proxy_host = proxy.host if proxy else None
 
     def error_for_all_recipients(error: str, retry: bool) -> Dict[str, Any]:

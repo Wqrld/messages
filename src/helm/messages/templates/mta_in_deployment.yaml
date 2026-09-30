@@ -1,0 +1,165 @@
+{{- if .Values.mtaIn.enabled -}}
+{{- $envVars := include "messages.common.env" (list . .Values.mtaIn) -}}
+{{- $fullName := include "messages.mtaIn.fullname" . -}}
+{{- $component := "mta-in" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ .Release.Namespace | quote }}
+  annotations:
+    {{- with .Values.mtaIn.dpAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  labels:
+    {{- include "messages.common.labels" (list . $component) | nindent 4 }}
+spec:
+  replicas: {{ .Values.mtaIn.replicas }}
+  selector:
+    matchLabels:
+      {{- include "messages.common.selectorLabels" (list . $component) | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.mtaIn.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "messages.common.selectorLabels" (list . $component) | nindent 8 }}
+    spec:
+      {{- if $.Values.image.credentials }}
+      imagePullSecrets:
+        - name: {{ include "messages.secret.dockerconfigjson.name" (dict "fullname" (include "messages.fullname" .) "imageCredentials" $.Values.image.credentials) }}
+      {{- end}}
+      {{- if .Values.mtaIn.serviceAccountName }}
+      serviceAccountName: {{ .Values.mtaIn.serviceAccountName }}
+      {{- end }}
+      shareProcessNamespace: {{ .Values.mtaIn.shareProcessNamespace }}
+      containers:
+        {{- with .Values.mtaIn.sidecars }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+        - name: {{ .Chart.Name }}
+          image: "{{ (.Values.mtaIn.image | default dict).repository | default .Values.image.repository }}:{{ (.Values.mtaIn.image | default dict).tag | default .Values.image.tag }}"
+          imagePullPolicy: {{ (.Values.mtaIn.image | default dict).pullPolicy | default .Values.image.pullPolicy }}
+          {{- with .Values.mtaIn.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.mtaIn.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if $envVars}}
+          env:
+            {{- $envVars | indent 12 }}
+          {{- end }}
+          {{- if .Values.mtaIn.envFrom }}
+          envFrom:
+            {{- toYaml .Values.mtaIn.envFrom | nindent 12 }}
+          {{- end }}
+          {{- with .Values.mtaIn.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: smtp
+              containerPort: {{ .Values.mtaIn.service.targetPort }}
+              protocol: TCP
+          {{- if .Values.mtaIn.probes.liveness }}
+          livenessProbe:
+            {{- include "messages.probes.abstract" (merge .Values.mtaIn.probes.liveness (dict "targetPort" .Values.mtaIn.service.targetPort )) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.mtaIn.probes.readiness }}
+          readinessProbe:
+            {{- include "messages.probes.abstract" (merge .Values.mtaIn.probes.readiness (dict "targetPort" .Values.mtaIn.service.targetPort )) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.mtaIn.probes.startup }}
+          startupProbe:
+            {{- include "messages.probes.abstract" (merge .Values.mtaIn.probes.startup (dict "targetPort" .Values.mtaIn.service.targetPort )) | nindent 12 }}
+          {{- end }}
+          {{- with .Values.mtaIn.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- range $index, $value := .Values.mountFiles }}
+            - name: "files-{{ $index }}"
+              mountPath: {{ $value.path }}
+              subPath: content
+            {{- end }}
+            {{- range $name, $volume := .Values.mtaIn.persistence }}
+            - name: "{{ $name }}"
+              mountPath: "{{ $volume.mountPath }}"
+            {{- end }}
+            {{- range .Values.mtaIn.extraVolumeMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              subPath: {{ .subPath | default "" }}
+              readOnly: {{ .readOnly }}
+            {{- end }}
+      {{- with .Values.mtaIn.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.mtaIn.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.mtaIn.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        {{- range $index, $value := .Values.mountFiles }}
+        - name: "files-{{ $index }}"
+          configMap:
+            name: "{{ include "messages.fullname" $ }}-files-{{ $index }}"
+        {{- end }}
+        {{- range $name, $volume := .Values.mtaIn.persistence }}
+        - name: "{{ $name }}"
+          {{- if eq $volume.type "emptyDir" }}
+          emptyDir: {}
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: "{{ $fullName }}-{{ $name }}"
+          {{- end }}
+        {{- end }}
+        {{- range .Values.mtaIn.extraVolumes }}
+        - name: {{ .name }}
+          {{- if .existingClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .existingClaim }}
+          {{- else if .secret }}
+          secret:
+            {{ toYaml .secret | nindent 12 }}
+          {{- else if .hostPath }}
+          hostPath:
+            {{ toYaml .hostPath | nindent 12 }}
+          {{- else if .csi }}
+          csi:
+            {{- toYaml .csi | nindent 12 }}
+          {{- else if .configMap }}
+          configMap:
+            {{- toYaml .configMap | nindent 12 }}
+          {{- else if .emptyDir }}
+          emptyDir:
+            {{- toYaml .emptyDir | nindent 12 }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- end }}
+---
+{{ if .Values.mtaIn.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "messages.common.selectorLabels" (list . $component) | nindent 6 }}
+{{ end }}
+{{- end }}

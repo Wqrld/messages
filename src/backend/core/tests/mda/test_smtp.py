@@ -5,6 +5,9 @@ import socket
 import threading
 import time
 
+from contextlib import suppress
+from unittest.mock import patch
+
 import pytest
 
 from core.mda.smtp import SmtpProxy, send_smtp_mail
@@ -381,6 +384,22 @@ class TestSMTPClient:
         assert result["user1@example.com"]["delivered"] is False
         # Should fail with proxy connection error (since proxy server doesn't exist)
         assert "proxy" in result["user1@example.com"]["error"].lower()
+
+    @pytest.mark.parametrize("configured", ["mx.example.org", None])
+    def test_ehlo_hostname_without_proxy(self, settings, configured):
+        """Without a proxy, EHLO presents MTA_OUT_EHLO_HOSTNAME (or the FQDN if unset)."""
+        settings.MTA_OUT_EHLO_HOSTNAME = configured
+        with patch("core.mda.smtp.ProxySMTP", side_effect=OSError("stop")) as smtp:
+            with suppress(OSError):
+                send_smtp_mail(
+                    smtp_host="127.0.0.1",
+                    smtp_port=9999,
+                    envelope_from="sender@example.com",
+                    recipient_emails={"user1@example.com"},
+                    message_content=b"Subject: Test\n\nHello World!",
+                    timeout=1,
+                )
+        assert smtp.call_args.kwargs["local_hostname"] == configured
 
     def test_mail_from_failure(self):
         """Test MAIL FROM failure handling."""

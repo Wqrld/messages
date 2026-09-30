@@ -1,10 +1,32 @@
 #!/bin/sh
 
-erb /etc/nginx/servers.conf.erb > /etc/nginx/servers.conf
+# RSPAMD_redis_url (redis://[user:password@]host:port[/db]) is the backend's own spelling,
+# so one Secret can feed both; it is split into the parts rspamd's redis block takes.
+if [ -n "${RSPAMD_redis_url:-}" ]; then
+    rest="${RSPAMD_redis_url#*://}"
+    case "$rest" in
+        *@*) creds="${rest%%@*}"; rest="${rest#*@}"
+             export RSPAMD_redis_username="${creds%%:*}"
+             export RSPAMD_redis_password="${creds#*:}" ;;
+    esac
+    case "$rest" in
+        */*) export RSPAMD_redis_db="${rest#*/}"; rest="${rest%%/*}" ;;
+    esac
+    export RSPAMD_redis_servers="$rest"
+fi
+export RSPAMD_redis_servers="${RSPAMD_redis_servers:-redis:6379}"
+export RSPAMD_log_level="${RSPAMD_log_level:-info}"
+
+erb /etc/nginx/servers.conf.erb > /tmp/servers.conf
 
 # Start rspamd in background
 echo "Starting rspamd..."
-rspamd -f -u _rspamd -g _rspamd -c /app/rspamd.conf &
+# Root only in an image run with a user override; rspamd then drops to its own.
+if [ "$(id -u)" = 0 ]; then
+    rspamd -f -u _rspamd -g _rspamd &
+else
+    rspamd -f &
+fi
 RSPAMD_PID=$!
 
 # Wait for rspamd to be ready (check if both ports 11333 and 11334 are listening)

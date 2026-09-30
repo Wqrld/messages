@@ -25,12 +25,20 @@ RUN mkdir -p /usr/share/nginx/logs/ && \
     ln -sf /dev/stderr /usr/share/nginx/logs/error.log
 
 # Copy configuration files
-COPY rspamd.conf /app/rspamd.conf
+# Overrides on top of rspamd's stock configuration, which stays in place so every
+# module keeps its shipped defaults.
+COPY local.d/ /etc/rspamd/local.d/
 COPY base_nginx.conf /etc/nginx/nginx.conf
 COPY servers.conf.erb /etc/nginx/servers.conf.erb
 COPY start.sh /start.sh
 
 RUN chmod +x /start.sh
+
+# Unprivileged, and numeric so a runtime can verify runAsNonRoot. rspamd's and nginx's
+# writable state belongs to that uid; servers.conf is rendered into /tmp at start.
+RUN mkdir -p /var/lib/nginx && \
+    chown -R 1000:1000 /var/lib/rspamd /var/run/rspamd /var/lib/nginx
+USER 1000:1000
 
 ENV PORT=8010
 

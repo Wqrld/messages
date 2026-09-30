@@ -586,6 +586,12 @@ class Base(Configuration):
     MTA_OUT_DIRECT_PORT = values.PositiveIntegerValue(
         25, environ_name="MTA_OUT_DIRECT_PORT", environ_prefix=None
     )
+    # Name given in EHLO/HELO on direct delivery without a proxy. Receivers compare it with
+    # the sending address's PTR, so it should be the name that PTR points at. Unset, the
+    # client's FQDN is used — in a container, the container's hostname.
+    MTA_OUT_EHLO_HOSTNAME = values.Value(
+        None, environ_name="MTA_OUT_EHLO_HOSTNAME", environ_prefix=None
+    )
 
     # SMTP settings for external SMTP servers, if MTA_OUT_MODE="relay"
     MTA_OUT_RELAY_HOST = values.Value(
